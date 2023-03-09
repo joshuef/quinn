@@ -16,7 +16,11 @@ benchmark_group!(
     large_data_1_stream,
     large_data_10_streams,
     small_data_1_stream,
-    small_data_100_streams
+    small_data_100_streams,
+    large_data_bi_1_stream,
+    large_data_bi_10_streams,
+    small_data_bi_1_stream,
+    small_data_bi_100_streams
 );
 benchmark_main!(benches);
 
@@ -36,6 +40,22 @@ fn small_data_100_streams(bench: &mut Bencher) {
     send_data(bench, SMALL_DATA, 100);
 }
 
+fn large_data_bi_1_stream(bench: &mut Bencher) {
+    send_data_bi(bench, LARGE_DATA, 1);
+}
+
+fn large_data_bi_10_streams(bench: &mut Bencher) {
+    send_data_bi(bench, LARGE_DATA, 10);
+}
+
+fn small_data_bi_1_stream(bench: &mut Bencher) {
+    send_data_bi(bench, SMALL_DATA, 1);
+}
+
+fn small_data_bi_100_streams(bench: &mut Bencher) {
+    send_data_bi(bench, SMALL_DATA, 100);
+}
+
 fn send_data(bench: &mut Bencher, data: &'static [u8], concurrent_streams: usize) {
     let _ = tracing_subscriber::fmt::try_init();
 
@@ -52,6 +72,38 @@ fn send_data(bench: &mut Bencher, data: &'static [u8], concurrent_streams: usize
             let client = client.clone();
             handles.push(runtime.spawn(async move {
                 let mut stream = client.open_uni().await.unwrap();
+                stream.write_all(data).await.unwrap();
+                stream.finish().await.unwrap();
+            }));
+        }
+
+        runtime.block_on(async {
+            for handle in handles {
+                handle.await.unwrap();
+            }
+        });
+    });
+    drop(client);
+    runtime.block_on(endpoint.wait_idle());
+    thread.join().unwrap()
+}
+
+fn send_data_bi(bench: &mut Bencher, data: &'static [u8], concurrent_streams: usize) {
+    let _ = tracing_subscriber::fmt::try_init();
+
+    let ctx = Context::new();
+    let (addr, thread) = ctx.spawn_server();
+    let (endpoint, client, runtime) = ctx.make_client(addr);
+    let client = Arc::new(client);
+
+    bench.bytes = (data.len() as u64) * (concurrent_streams as u64);
+    bench.iter(|| {
+        let mut handles = Vec::new();
+
+        for _ in 0..concurrent_streams {
+            let client = client.clone();
+            handles.push(runtime.spawn(async move {
+                let (mut stream, rcv) = client.open_bi().await.unwrap();
                 stream.write_all(data).await.unwrap();
                 stream.finish().await.unwrap();
             }));
