@@ -13,10 +13,10 @@ use quinn::{Endpoint, TokioRuntime};
 
 benchmark_group!(
     benches,
-    large_data_1_stream,
-    large_data_10_streams,
-    small_data_1_stream,
-    small_data_100_streams,
+    // large_data_1_stream,
+    // large_data_10_streams,
+    // small_data_1_stream,
+    // small_data_100_streams,
     large_data_bi_1_stream,
     large_data_bi_10_streams,
     small_data_bi_1_stream,
@@ -165,9 +165,9 @@ impl Context {
                         .await
                         .expect("connect");
 
-                    while let Ok(mut stream) = connection.accept_uni().await {
+                    while let Ok((mut stream, mut recv)) = connection.accept_bi().await {
                         tokio::spawn(async move {
-                            while stream
+                            while recv
                                 .read_chunk(usize::MAX, false)
                                 .await
                                 .unwrap()
